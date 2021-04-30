@@ -1034,7 +1034,7 @@ static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeRequest *req)
     if (unlikely(!req->ns)) {
         return NVME_INVALID_FIELD | NVME_DNR;
     }
-
+    //printf("opcode=%x\n", req->cmd.opcode); //此文件默认应该不会被引用
     switch (req->cmd.opcode) {
     case NVME_CMD_FLUSH:
         return nvme_flush(n, req);
@@ -1042,6 +1042,7 @@ static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeRequest *req)
         return nvme_write_zeroes(n, req);
     case NVME_CMD_WRITE:
     case NVME_CMD_READ:
+    case NVME_CMD_NDP://读取一个文件的内容
         return nvme_rw(n, req);
     default:
         trace_pci_nvme_err_invalid_opc(req->cmd.opcode);
@@ -1920,14 +1921,17 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeRequest *req)
         return nvme_create_cq(n, req);
     case NVME_ADM_CMD_IDENTIFY:
         return nvme_identify(n, req);
-    case NVME_ADM_CMD_ABORT:
         return nvme_abort(n, req);
+    case NVME_ADM_CMD_ABORT:
     case NVME_ADM_CMD_SET_FEATURES:
         return nvme_set_feature(n, req);
     case NVME_ADM_CMD_GET_FEATURES:
         return nvme_get_feature(n, req);
     case NVME_ADM_CMD_ASYNC_EV_REQ:
         return nvme_aer(n, req);
+    case NVME_ADM_CMD_NDP:
+        printf("special NDP command successfully triggered\n");
+        return 0;
     default:
         trace_pci_nvme_err_invalid_admin_opc(req->cmd.opcode);
         return NVME_INVALID_OPCODE | NVME_DNR;

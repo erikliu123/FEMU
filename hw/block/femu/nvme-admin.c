@@ -950,6 +950,7 @@ static uint16_t nvme_format(FemuCtrl *n, NvmeCmd *cmd)
 
 static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
 {
+    printf("admin opcode:%x\n",cmd->opcode);
     switch (cmd->opcode) {
     case NVME_ADM_CMD_FEMU_DEBUG:
         n->upg_rd_lat_ns = le64_to_cpu(cmd->cdw10);
@@ -1004,6 +1005,9 @@ static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
     case NVME_ADM_CMD_SECURITY_SEND:
     case NVME_ADM_CMD_SECURITY_RECV:
         return NVME_INVALID_OPCODE | NVME_DNR;
+    case NVME_ADM_CMD_NDP:
+      printf("admin cmd, NVME_ADM_CMD_NDP\n");
+        return 0;
     default:
         if (n->ext_ops.admin_cmd) {
             return n->ext_ops.admin_cmd(n, cmd);

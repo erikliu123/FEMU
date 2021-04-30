@@ -32,7 +32,7 @@ int backend_rw(SsdDramBackend *b, QEMUSGList *qsg, uint64_t *lbal, bool is_write
     dma_addr_t sg_cur_byte = 0;
     dma_addr_t cur_addr, cur_len;
     uint64_t mb_oft = lbal[0];
-    void *mb = b->logical_space;
+    void *mb = b->logical_space;//RAM模拟的SSD
 
     DMADirection dir = DMA_DIRECTION_FROM_DEVICE;
 
@@ -43,7 +43,7 @@ int backend_rw(SsdDramBackend *b, QEMUSGList *qsg, uint64_t *lbal, bool is_write
     while (sg_cur_index < qsg->nsg) {
         cur_addr = qsg->sg[sg_cur_index].base + sg_cur_byte;
         cur_len = qsg->sg[sg_cur_index].len - sg_cur_byte;
-        if (dma_memory_rw(qsg->as, cur_addr, mb + mb_oft, cur_len, dir)) {
+        if (dma_memory_rw(qsg->as, cur_addr, mb + mb_oft, cur_len, dir)) {//从NAND上DMA传输到内存中
             error_report("FEMU: dma_memory_rw error");
         }
 

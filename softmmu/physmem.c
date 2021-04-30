@@ -2826,7 +2826,8 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
             /* RAM case */
             fuzz_dma_read_cb(addr, len, mr, false);
             ram_ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-            memcpy(buf, ram_ptr, l);
+            memcpy(buf, ram_ptr, l);//核心部分, 不止NVMe SSD调用
+            //printf("%s %d, buf[%hhn], ram_ptr[%hhn]\n", __func__, __LINE__, buf, ram_ptr);
         }
 
         if (release_lock) {

@@ -1,4 +1,7 @@
 #include "./nvme.h"
+#include <unistd.h>
+#include <dirent.h>
+#define MAX_DEPTH 2
 
 static uint16_t nvme_io_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeRequest *req);
 
@@ -346,6 +349,184 @@ uint16_t nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
 
     return NVME_DNR;
 }
+#ifdef READ_FILE
+static void out_report(struct stat *ptr)
+{
+    int s = (unsigned int)ptr->st_mode, mask = 1 << 9;
+    //putchar(mask&s?'d':'-');
+    mask >>= 1;
+    int k = 0;
+    char temp[] = "rwx";
+    struct passwd *pwd;
+    struct tm *modify;
+    while (mask)
+    {
+        putchar(mask & s ? temp[k] : '-');
+        ++k;
+        mask >>= 1;
+        k = (k == 3) ? 0 : k;
+    }
+    printf(" %-2ld", ptr->st_nlink); //硬连接数目
+    pwd = getpwuid(ptr->st_uid);     //获取用户名
+    printf(" %-10s", pwd->pw_name);
+    pwd = getpwuid(ptr->st_gid); //获取组名
+    printf(" %-10s%-8ld", pwd->pw_name, ptr->st_size);
+    modify = localtime(&ptr->st_mtime); //获取修改时间
+    printf(" %-4d年%-2d月%-2d日 %-2d:%-2d  ", 1900 + modify->tm_year, modify->tm_mon + 1, modify->tm_mday, modify->tm_hour, modify->tm_min);
+}
+
+static void printFile(const char *path, int depth)//depth表示的是空格数目
+{
+    DIR *p;
+    struct dirent *entry;
+    struct stat statbuf;
+    char child[512], cur[512];
+    int fd, i;
+    if (depth >= MAX_DEPTH)
+        return;
+    else{
+        ;
+    }
+
+    if ((p = opendir(path)) == NULL)
+    {
+        printf("open [%s] failure\n", path);
+        return;
+    }
+
+    while ((entry = readdir(p)) != NULL)
+    {
+
+        if (entry->d_type & DT_DIR)
+        { //目录文件
+            //if(statbuf.st_mode & S_IFDIR) printf("%s is a link file\n",entry->d_name);
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                continue;
+            sprintf(child, "%s/%s", path, entry->d_name);
+            for (i = 0; i < depth; ++i)
+                putchar(' ');
+
+            putchar('d');
+            fd = open(child, O_RDONLY);
+            fstat(fd, &statbuf);
+            close(fd);
+            out_report(&statbuf);
+            printf("\033[1;34m %s\n\033[0m", entry->d_name);
+            printFile(child, depth + 4);
+        }
+
+        //if(entry->d_type & ){
+        else
+        {
+            sprintf(cur, "%s//%s", path, entry->d_name);
+            for (i = 0; i < depth; ++i)
+                putchar(' ');
+
+            if (entry->d_type == DT_CHR)
+            {
+                putchar('c');
+                //sleep(1);
+            }
+            if (entry->d_type == DT_BLK)
+            {
+                putchar('b');
+                sleep(1);
+            }
+            if (entry->d_type == DT_LNK)
+            {
+                putchar('l');
+                sleep(1);
+            }
+            else
+                putchar('-');
+            fd = open(cur, O_RDONLY);
+            fstat(fd, &statbuf);
+            close(fd);
+            out_report(&statbuf);
+            if (((unsigned int)statbuf.st_mode & 0x1) == 0)
+                printf("%s \n", entry->d_name);
+            else
+                printf("\033[1;32m %s\n\033[0m", entry->d_name);
+        }
+    }
+}
+#endif
+
+//char write_buffer[4096] = "NDP success";
+uint16_t nvme_ndp(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req) //读取文件
+{
+    NvmeRwCmd *rw = (NvmeRwCmd *)cmd;
+    //uint16_t ctrl = le16_to_cpu(rw->control);
+    uint32_t nlb = le16_to_cpu(rw->nlb) + 1;
+    uint64_t slba = le64_to_cpu(rw->slba);
+    uint64_t prp1 = le64_to_cpu(rw->prp1);
+    uint64_t prp2 = le64_to_cpu(rw->prp2);
+    const uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
+    //const uint16_t ms = le16_to_cpu(ns->id_ns.lbaf[lba_index].ms);
+    const uint8_t data_shift = ns->id_ns.lbaf[lba_index].lbads;
+    uint64_t data_size = (uint64_t)nlb << data_shift;
+    uint64_t data_offset = slba << data_shift;
+    //uint64_t meta_size = nlb * ms; 
+    int sg_cur_index = 0;
+    dma_addr_t sg_cur_byte = 0;
+    dma_addr_t cur_addr, cur_len;
+    QEMUSGList *qsg = &req->qsg;
+    int ret = 0;
+#ifdef READ_FILE
+    const char *filename = "/nvme_tcp.sh";
+    printFile("/", 0); //打印根目录下的一级目录/文件， 结果发现和linux看到的视图不一样，又是一个新的Linux目录夹
+    int fd;
+#endif    
+   
+    req->is_write = 0;//默认为读请求
+    printf("%s %d, prp1[0x%lx], prp2[%lx]\n", __func__, __LINE__, prp1, prp2);
+    if (nvme_map_prp(&req->qsg, &req->iov, prp1, prp2, data_size, n))
+    {
+        nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
+                            offsetof(NvmeRwCmd, prp1), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+
+    assert((nlb << data_shift) == req->qsg.size);
+
+    printf("%s %d, qsg->nsg[%d]\n", __func__, __LINE__, qsg->nsg);
+    req->slba = 0;
+    req->status = NVME_SUCCESS;
+    req->nlb = nlb;
+
+    ret = backend_rw(n->mbe, &req->qsg, &data_offset, req->is_write);
+    return NVME_SUCCESS;
+
+    while (sg_cur_index < qsg->nsg)
+    {
+        cur_addr = qsg->sg[sg_cur_index].base + sg_cur_byte;
+        cur_len = qsg->sg[sg_cur_index].len - sg_cur_byte;
+
+        printf("%s %d, cur_addr[0x%lx], cur_len[%ld]\n", __func__, __LINE__, cur_addr, cur_len);
+        // if(ret < 0)
+        // {
+        //     memcpy((void*)cur_addr, (void*)write_buffer, cur_len > 4096? 4096: cur_len);
+        //     ret = cur_len;
+        // }
+
+#ifndef IGNORE_ERROR
+        if (ret < cur_len)
+        {
+            break;
+        }
+#endif
+        sg_cur_byte += cur_len;
+        if (sg_cur_byte == qsg->sg[sg_cur_index].len)
+        {
+            sg_cur_byte = 0;
+            ++sg_cur_index;
+        }
+    }
+
+    //ret = backend_rw(n->mbe, &req->qsg, &data_offset, req->is_write);
+    //printf("%s %d\n", __func__, __LINE__);
+    return NVME_SUCCESS;
+}
 
 static uint16_t nvme_dsm(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
                          NvmeRequest *req)
@@ -487,7 +668,7 @@ static uint16_t nvme_io_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     }
 
     req->ns = ns = &n->namespaces[nsid - 1];
-
+    printf("femu/block IO cmd op[%x]\n", cmd->opcode);
     switch (cmd->opcode) {
     case NVME_CMD_FLUSH:
         if (!n->id_ctrl.vwc || !n->features.volatile_wc) {
@@ -516,7 +697,7 @@ static uint16_t nvme_io_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
         return NVME_INVALID_OPCODE | NVME_DNR;
     default:
         if (n->ext_ops.io_cmd) {
-            return n->ext_ops.io_cmd(n, ns, cmd, req);
+            return n->ext_ops.io_cmd(n, ns, cmd, req); // case NVME_CMD_READ的逻辑处理在这里
         }
 
         femu_err("%s, NVME_INVALID_OPCODE\n", __func__);

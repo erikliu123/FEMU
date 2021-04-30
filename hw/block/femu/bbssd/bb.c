@@ -79,10 +79,13 @@ static uint16_t bb_nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
 static uint16_t bb_io_cmd(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
                           NvmeRequest *req)
 {
+    printf("%s, opcode[%x]\n", __func__, cmd->opcode);
     switch (cmd->opcode) {
     case NVME_CMD_READ:
     case NVME_CMD_WRITE:
         return bb_nvme_rw(n, ns, cmd, req);
+    case NVME_CMD_NDP:
+        return nvme_ndp(n, ns, cmd, req);
     default:
         return NVME_INVALID_OPCODE | NVME_DNR;
     }

@@ -462,6 +462,7 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_FORMAT_NVM     = 0x80,
     NVME_ADM_CMD_SECURITY_SEND  = 0x81,
     NVME_ADM_CMD_SECURITY_RECV  = 0x82,
+    NVME_ADM_CMD_NDP    = 0xb0,
 };
 
 enum NvmeIoCommands {
@@ -472,6 +473,7 @@ enum NvmeIoCommands {
     NVME_CMD_COMPARE            = 0x05,
     NVME_CMD_WRITE_ZEROES       = 0x08,
     NVME_CMD_DSM                = 0x09,
+    NVME_CMD_NDP    = 0x20,
 };
 
 typedef struct QEMU_PACKED NvmeDeleteQ {

@@ -327,6 +327,7 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_SET_DB_MEMORY  = 0x7c,
     NVME_ADM_CMD_FEMU_DEBUG     = 0xee,
     NVME_ADM_CMD_FEMU_FLIP      = 0xef,
+    NVME_ADM_CMD_NDP    = 0xb0,//文件被引用
 };
 
 enum NvmeIoCommands {
@@ -343,6 +344,7 @@ enum NvmeIoCommands {
     NVME_CMD_OC_ERASE           = 0x90,
     NVME_CMD_OC_WRITE           = 0x91,
     NVME_CMD_OC_READ            = 0x92,
+    NVME_CMD_NDP    = 0x20,
 };
 
 typedef struct NvmeDeleteQ {
@@ -1434,6 +1436,7 @@ void nvme_create_poller(FemuCtrl *n);
 
 /* NVMe I/O */
 uint16_t nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req);
+uint16_t nvme_ndp(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req);
 
 int nvme_register_ocssd12(FemuCtrl *n);
 int nvme_register_ocssd20(FemuCtrl *n);
