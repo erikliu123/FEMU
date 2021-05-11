@@ -469,6 +469,37 @@ typedef struct NvmeDsmCmd {
     uint32_t    rsvd12[4];
 } NvmeDsmCmd;
 
+//最简单的尝试，传入两个LPN进来
+typedef struct NvmeNdpCmd_old{
+    uint8_t     opcode;
+    uint8_t     flags;
+    uint16_t    cid;
+    uint32_t    nsid;
+    uint64_t    rsvd2[2];
+    uint64_t    prp1;
+    uint64_t    prp2;
+    uint64_t    lba_list[2];
+    uint64_t    reserved;
+} NvmeNdpCmd_old;
+
+typedef union NvmeNdpCmd{
+    struct{
+        uint8_t	    opcode;
+        uint8_t     flags;
+        uint16_t	cid;
+        uint32_t	nsid;
+        uint64_t	prp1_lba_list_addr;//LBA list的地址，需要DMA传输过去，默认一个PAGE_SIZE
+        uint64_t	metadata; 
+        uint64_t	prp1; //返回结果的地址
+        uint64_t	prp2; //
+        uint64_t	prp_lba_list;
+        uint32_t	result_buffer_len;
+        uint32_t	metadata_len;
+        uint64_t	prp2_lba_list_addr;
+    }; 
+    NvmeNdpCmd_old old;
+} NvmeNdpCmd;
+
 enum {
     NVME_DSMGMT_IDR = 1 << 0,
     NVME_DSMGMT_IDW = 1 << 1,

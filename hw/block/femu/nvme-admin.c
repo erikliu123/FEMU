@@ -948,9 +948,91 @@ static uint16_t nvme_format(FemuCtrl *n, NvmeCmd *cmd)
     return nvme_format_namespace(ns, lba_idx, meta_loc, pil, pi, sec_erase);
 }
 
+static uint16_t nvme_admin_ndp_task(FemuCtrl *n, NvmeCmd *cmd)
+{
+    NvmeNdpCmd *ndpCmd=(NvmeNdpCmd *)cmd;
+    uint32_t nsid = le32_to_cpu(ndpCmd->nsid);
+    uint64_t prp1 = le64_to_cpu(ndpCmd->prp1);
+    uint64_t prp2 = le64_to_cpu(ndpCmd->prp2);
+    NvmeNamespace *ns;
+    QEMUSGList qsg;
+    QEMUIOVector iov;
+    uint64_t lba_list[64];
+    char dst[4096]; //保存结果，DMA返回
+
+    if (nsid == 0 || nsid > n->num_namespaces) {
+        nsid = 1;
+        //return NVME_INVALID_NSID | NVME_DNR;
+    }
+    ns = &n->namespaces[nsid - 1];
+    /* 读取LBA的数组 */
+    if(dma_write_prp(n, (uint8_t*)lba_list, sizeof(lba_list), ndpCmd->prp1_lba_list_addr, ndpCmd->prp2_lba_list_addr))
+    {    
+        printf("fail to fetch LBA list\n");
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+    for(int i=0; i<(ndpCmd->metadata_len/8); i++){
+        printf("%ld ", lba_list[i]);
+    }
+    putchar('\n');
+    //TODO： 读取闪存LPN数据，进行处理
+
+    //char temp[4096], temp2[4096];
+    /* 按照老的方式可能LBA越界 */
+    // memcpy(temp, n->mbe->logical_space + data_offset, n->page_size);
+    // memcpy(temp2, n->mbe->logical_space + (ndpCmd->old.lba_list[1] << data_shift), n->page_size);
+    // for(int i=0; i<n->page_size; i++)
+    // {
+    //     dst[i]=temp[i]^temp2[i];
+    //     if(i<10){
+    //         printf("%s %x %x\n", __func__, temp[i], temp2[i]);
+    //     }
+    // }
+    memset(dst, 0x1, sizeof(dst));//测试返回是否正常
+    
+    if(dma_read_prp(n, (uint8_t*)dst, ndpCmd->result_buffer_len > 4096 ? 4096: ndpCmd->result_buffer_len, prp1, prp2))//也会调用nvme_map_prp
+    {
+        printf("fail to write data into host's prp list\n");
+       return NVME_INVALID_FIELD | NVME_DNR;
+    }
+    for(int i=0; i<200; i++)
+    {
+        printf("%02x ", (uint8_t)dst[i]);
+        if(i%16 == 15 || i == 199) putchar('\n');
+    }
+    printf("page size[%d] prp[0x%lx 0x%lx] lba_prp[0x%lx 0x%lx]\n", n->page_size, prp1, prp2, ndpCmd->prp1_lba_list_addr, ndpCmd->prp2_lba_list_addr);
+    //printf("page size[%d] prp[0x%lx] lba:[0x%lx 0x%lx] data_shift[%d]\n", n->page_size, prp1, ndpCmd->old.lba_list[0], ndpCmd->old.lba_list[1], data_shift);
+    return NVME_SUCCESS;
+
+
+    //TODO: delete
+    if (nvme_map_prp(&qsg, &iov, prp1, prp2, n->page_size, n)) {
+        
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+   
+    if (dma_memory_rw(qsg.as, qsg.sg[0].base, dst, n->page_size, DMA_DIRECTION_TO_DEVICE)) {//从NAND上DMA传输到内存中
+            error_report("FEMU: dma_memory_rw error");
+    }
+    qemu_sglist_destroy(&qsg);
+    return NVME_SUCCESS;
+
+    //TODO: delete
+    uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
+    const uint8_t data_shift = ns->id_ns.lbaf[lba_index].lbads;//=9
+    uint64_t data_offset = ndpCmd->old.lba_list[0] << data_shift;//LBA[0]
+    /*读写IO命令均调用此函数*/
+    backend_rw(n->mbe, &qsg, &data_offset, 0); //--> qemu_iovec_destroy(&iov);
+    data_offset = ndpCmd->old.lba_list[1] << data_shift;//LBA[1]
+    
+    return NVME_SUCCESS;
+}
+
 static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
 {
+#ifdef NVME_IO_PRINT
     printf("admin opcode:%x\n",cmd->opcode);
+#endif    
     switch (cmd->opcode) {
     case NVME_ADM_CMD_FEMU_DEBUG:
         n->upg_rd_lat_ns = le64_to_cpu(cmd->cdw10);
@@ -1006,8 +1088,8 @@ static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
     case NVME_ADM_CMD_SECURITY_RECV:
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_NDP:
-      printf("admin cmd, NVME_ADM_CMD_NDP\n");
-        return 0;
+        femu_debug("admin cmd, NVME_ADM_CMD_NDP\n");
+        return nvme_admin_ndp_task(n, cmd);;
     default:
         if (n->ext_ops.admin_cmd) {
             return n->ext_ops.admin_cmd(n, cmd);

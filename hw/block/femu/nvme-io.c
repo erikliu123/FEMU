@@ -51,6 +51,7 @@ static void nvme_process_sq_io(void *opaque, int index_poller)
     int processed = 0;
 
     nvme_update_sq_tail(sq);
+    //printf("%s triggered\n", __func__);// poll,死循环函数
     while (!(nvme_sq_empty(sq))) {
         if (sq->phys_contig) {
             addr = sq->dma_addr + sq->head * n->sqe_size;
@@ -668,7 +669,9 @@ static uint16_t nvme_io_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     }
 
     req->ns = ns = &n->namespaces[nsid - 1];
+#ifdef NVME_IO_PRINT
     printf("femu/block IO cmd op[%x]\n", cmd->opcode);
+#endif
     switch (cmd->opcode) {
     case NVME_CMD_FLUSH:
         if (!n->id_ctrl.vwc || !n->features.volatile_wc) {

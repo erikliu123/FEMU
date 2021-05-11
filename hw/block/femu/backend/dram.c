@@ -54,7 +54,7 @@ int backend_rw(SsdDramBackend *b, QEMUSGList *qsg, uint64_t *lbal, bool is_write
         }
 
         if (b->femu_mode == FEMU_OCSSD_MODE) {
-            mb_oft = lbal[sg_cur_index];
+            mb_oft = lbal[sg_cur_index];//可能会数组越界？
         } else if (b->femu_mode == FEMU_BBSSD_MODE ||
                    b->femu_mode == FEMU_NOSSD_MODE ||
                    b->femu_mode == FEMU_ZNSSD_MODE) {
